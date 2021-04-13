@@ -5,6 +5,19 @@ Decompile layered images (.psd, .ora) into cropped textures + a json data file.
 
 Works with Krita and Gimp and anything else that can export .psd and .ora.
 
+## Setup
+
+**Not ready for use.**
+
+- pip install .
+- cd directory/with/files
+- limage
+
+## Command Line Flags
+
+- --print # output print statements
+- --skip_images # don't generate new images
+
 ## Features
 
 - Many [image formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html), like WEBP.
