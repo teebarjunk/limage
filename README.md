@@ -1,7 +1,7 @@
 
 # limage v0.2
 
-Decompile layered images (`.psd`, `.kra`, `.ora`) into cropped textures + a json data file.
+Decompile layered images (`.psd`, `.kra`, `.ora`) into cropped textures + json.
 
 Works with Krita and Gimp and anything else that can export `.psd`, `.kra` or `.ora`.
 
