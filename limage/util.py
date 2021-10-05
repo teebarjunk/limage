@@ -1,19 +1,44 @@
 from inspect import stack
 from pathlib import Path
-import json, os, sys, logging
-
-# print(os.getcwd())
-log_path = Path(os.getcwd()) / ".limage.log"
-logging.basicConfig(filename=log_path, level=logging.DEBUG)
+import json, os, sys, argparse, logging
 
 SETTINGS:dict = {}
-
-PRINT = "--print" in sys.argv
-
+ARGS = None
 _warnings = 0
 _errors = 0
 _print = print
 indent = 0
+
+def init():
+	global ARGS
+	
+	parser = argparse.ArgumentParser(description="Limage v1.0")
+	parser.add_argument("path", help="Path to file or directory.")
+	parser.add_argument("--format", type=str, default="PNG", help="Output texture format.")
+	parser.add_argument("--scale", type=float, default=0.0, help="Scale of textures.")
+	parser.add_argument("--padding", type=int, default=1, help="Extra padding around textures.")
+	parser.add_argument("--quant", type=bool, default=False, help="Quantize. Reduce file size at cost of color count.")
+	parser.add_argument("--origin", default="0.0,0.0", help="Origin. 0.5,0.5 is center.")
+	parser.add_argument("--sep", default="-", help="Image name seperator.")
+	
+	parser.add_argument("--print", action="store_true", help="Debug: Print output.")
+	parser.add_argument("--skip_images", action="store_true", help="Debug: Skip generating images.")
+	ARGS = parser.parse_args()
+	
+	ARGS.path = Path(ARGS.path)
+	ARGS.output = ARGS.path.parent / ARGS.path.stem
+	
+	log_path = ARGS.output / f".{ARGS.path.stem}.log"
+	logging.basicConfig(filename=log_path, level=logging.DEBUG)
+	
+	if ARGS.path.is_dir():
+		print("must be file")
+		sys.exit()
+	
+	elif not ARGS.path.suffix in [".psd", ".ora"]:
+		print("must be .psd or .ora")
+		sys.exit()
+	
 
 def _get_color_str(default, **kwargs):
 	return get(kwargs, "color", default)
@@ -54,7 +79,7 @@ def print(*args, **kwargs):
 	stk = _get_stack_str(stack())
 	msg = f"{txt} {stk}"# _compile_str(clr, txt, stk)
 	logging.info(msg)
-	if PRINT:
+	if not ARGS or ARGS.print:
 		_print(msg)
 	
 
@@ -66,7 +91,7 @@ def print_error(e:Exception, path):
 	stk = _get_stack_str(stack())
 	msg = f"{txt} {stk}"
 	logging.error(msg)
-	if PRINT:
+	if not ARGS or ARGS.print:
 		_print(msg)
 
 def print_warning(*args):
@@ -77,7 +102,7 @@ def print_warning(*args):
 	stk = _get_stack_str(stack())
 	msg = f"{txt} {stk}"
 	logging.warning(msg)
-	if PRINT:
+	if not ARGS or ARGS.print:
 		_print(msg)
 
 def print_json(d, **kwargs):
@@ -86,7 +111,7 @@ def print_json(d, **kwargs):
 	stk = _get_stack_str(stack())
 	msg = _compile_str(clr, txt, stk)
 	logging.info(msg)
-	if PRINT:
+	if not ARGS or ARGS.print:
 		_print(msg)
 
 def to_json(data:dict, **kwargs) -> str:
@@ -166,6 +191,10 @@ def merge_unique(t:dict, p:dict) -> dict:
 # 		out.append(text[a+len(start):b])
 # 		text = text[b+len(end)+1:]
 # 	return out
+
+def tiny(f): return int(f) if int(f)==f else f
+def tiny_vec2(d): return [tiny(d["x"]), tiny(d["y"])]
+def tiny_vec4(d): return [tiny(d["x"]), tiny(d["y"]), tiny(d["w"]), tiny(d["h"])]
 
 def get_between(name:str, tag1="[", tag2="]"):
 	s = name.find(tag1)

@@ -9,10 +9,8 @@ from . import util, file, classes
 from .classes import Vec2
 from .util import get, print, print_error, print_warning
 
-SKIP_IMAGES:bool = "--skip_images" in sys.argv
-
 DEFAULT_SETTINGS:dict = {
-	"seperator": "-",				# change to "/" to folderize
+	"sep": "-",				# change to "/" to folderize
 	
 	# texture related
 	"scale": 1,						# rescale textures
@@ -47,42 +45,151 @@ DEFAULT_SETTINGS:dict = {
 COMPLAINED_ABOUT_WEBP:bool = False
 
 def get_settings(data):
-	data["settings"] = util.merge_unique(data["settings"], DEFAULT_SETTINGS)
-	return data["settings"]
+	settings = data["settings"]
+	
+	if not "output" in settings: settings["output"] = util.ARGS.output
+	if not "format" in settings: settings["format"] = util.ARGS.format
+	if not "padding" in settings: settings["padding"] = util.ARGS.padding
+	if not "quantize" in settings: settings["quantize"] = util.ARGS.quant
+	if not "sep" in settings: settings["sep"] = util.ARGS.sep
+	
+	return util.merge_unique(settings, DEFAULT_SETTINGS)
 
 def get_layer_path(l) -> list:
 	path = []
-	full_path = [l.name]
+	full_path = [l._name]
 	while l._parent_layer:
-		path.insert(0, l._parent_layer.name)
-		full_path.insert(0, l._parent_layer.name)
+		path.insert(0, l._parent_layer._name)
+		full_path.insert(0, l._parent_layer._name)
 		l = l._parent_layer
 	return path, full_path
 
+def get_layer_by_path(layers, path):
+	path = path.split("/")
+	for l in layers:
+		if l._full_path == path:
+			return l
+	return None
+
+def get_all_descendants(l, out):
+	for c in l._layers:
+		out.append(c)
+		if hasattr(c, "_layers"):
+			get_all_descendants(c, out)
+	return out
+
 def update_path(layers, data):
-	directory = Path(data["directory"]) / data["name"]
+	# directory = Path(data["directory"]) / data["name"]
+	
+	lindex = 0
+	for l in layers:
+		l._name, l._tags, l._layer_tags, l._deep_layer_tags = util.parse_name(l._name)
+		if l._name.strip() == "":
+			l._name = f"UNNAMED{lindex}"
+		l._index = lindex
+		lindex += 1
+		
+		if hasattr(l, "_layers"):
+			l._deep_layers = get_all_descendants(l, [])
+			# print("===\n",
+			# 	[x._name for x in l._layers],
+			# 	[x._name for x in l._deep_layers])
 	
 	settings = data["settings"]
+	texture_seperator = settings["sep"]
 	texture_format = settings["format"]
 	texture_extension = get(settings, "extension", texture_format.lower())
 	
 	for l in layers:
 		l._path, l._full_path = get_layer_path(l)
 		
-		file_name = "-".join(l._full_path) + f".{texture_extension}"
+		file_name = texture_seperator.join(l._full_path) + f".{texture_extension}"
 		l._texture = file_name
-		l._texture_path = str(directory / file_name)
+		l._texture_dir = util.ARGS.output
 		l._texture_scale = 1
+
+def update_child_tags(layers):
+	# apply tags to children
+	for l in layers:
+		if l._is_group:
+			
+			if "merge" in l._tags:
+				l._is_group = False
+			
+			if "options" in l._tags:
+				for c in l._layers:
+					c._tags["option"] = l._name
+			
+			if "toggles" in l._tags:
+				for c in l._layers:
+					c._tags["toggle"] = l._name
+			
+			# add child tags
+			if len(l._layer_tags):
+				for c in l._layers:
+					for tag in l._layer_tags:
+						if not tag in c._tags:
+							c._tags[tag] = l._tags[tag]
+			
+			# add descendant tags
+			if len(l._deep_layer_tags):
+				for c in l._deep_layers:
+					for tag in l._deep_layer_tags:
+						if not tag in c._tags:
+							c._tags[tag] = l._tags[tag]
+		
+		del l._layer_tags
+		del l._deep_layer_tags
+
+def print_names(l):
+	print([x._name for x in l])
+
+def determine_drawable(layers):
+	for l in layers:
+		l._ignore_layer = False
+		l._export_image = True
+	
+	for l in layers:
+		if l._is_group:
+			l._export_image = False
+		
+		# don't export image.
+		for k in ["x", "copy", "origin", "point"]:
+			if k in l._tags:
+				l._ignore_layer = True
+				l._export_image = False
+		
+		# don't export children.
+		for k in ["merge", "origins"]:
+			if k in l._tags:
+				l._ignore_layer = True
+				l._export_image = False
+				# print("===\n", l._name)
+				# print_names(l._layers)
+				# print_names(l._deep_layers)
+				for d in l._deep_layers:
+					d._ignore_layer = True
+					d._export_image = False
+		
+		# ignore layers.
+		for k in ["x", "origin", "point"]:
+			if k in l._tags:
+				l._ignore_layer = True
+				l._export_image = False
+				if hasattr(l, "_deep_layers"):
+					for d in l._deep_layers:
+						d._ignore_layer = True
+						d._export_image = False
 
 def update_area(layers, max_wide:int, max_high:int, padding:int=1):
 	for l in layers:
 		x, y, r, b = l._bounds
-		x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
-		
 		x -= padding
 		y -= padding
 		r += padding
 		b += padding
+		
+		x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
 		
 		w = r - x
 		h = b - y
@@ -91,24 +198,7 @@ def update_area(layers, max_wide:int, max_high:int, padding:int=1):
 		l._bounds_size = Vec2(w, h)
 		l._position = Vec2(x, y)
 		l._origin = Vec2(x, y) + l._bounds_size * .5
-		l._clamped_bbox = (x, y, r, b)
-		
-		# l._out_position = Vec2(x, y)
-		# l._out_origin = Vec2(x, y) + l._size * .5
-
-def determine_drawable(layers):
-	for l in layers:
-		if l._is_group:
-			l._export_image = False
-		
-		else:
-			for k in ["x", "copy", "origin", "point"]:
-				if k in l._tags:
-					l._export_image = False
-			
-			if "merge" in l._tags:
-				for d in l._deep_layers:
-					d._export_image = False
+		l._bbox = (x, y, r, b)
 
 def update_origins(layers, main_origin):
 	# update origins
@@ -121,16 +211,11 @@ def update_origins(layers, main_origin):
 				main_origin = l._origin
 			else:
 				l.parent._origin = l._origin
-	
-	# for l in layers:
-	# 	if l._is_group and "origins" in l._tags:
-	# 		for c in l._deep_layers:
-	# 			child = self.find_layer(self.psd, c.name)
-	# 			child._origin = c._origin
-	# 			# set for descendants as well
-	# 			if child._is_group:
-	# 				for d in child._deep_layers:
-	# 					d._origin = c._origin
+		
+		if "origins" in l._tags:
+			for c in l._layers:
+				target = get_layer_by_path(layers, c._name)
+				target._origin = c._origin
 	
 	return main_origin
 
@@ -175,13 +260,14 @@ def localize_area(layers, psd_origin):
 def serialize_layers(layers:list):
 	out = []
 	for l in layers:
-		if not "x" in l._tags and not "xdat" in l._tags:
+		if not l._ignore_layer:
 			out.append(serialize_layer(l))
+	out.reverse() # reverse layers since most programs render top to bottom.
 	return out
 
 def serialize_layer(l) -> dict:
 	out = {
-		"name": l.name,
+		"name": l._name,
 		"path": l._path,
 		"full_path": l._full_path,
 		"tags": l._tags,
@@ -198,36 +284,31 @@ def serialize_layer(l) -> dict:
 		}
 	}
 	
-	if l._export_image: # hasattr(l, "_texture_path"):
+	if hasattr(l, "_texture") and l._export_image:
 		out["texture"] = str(l._texture)
-		out["texture_path"] = str(l._texture_path)
+		out["directory"] = str(l._texture_dir)
 		out["scale"] = l._texture_scale
 	
 	if hasattr(l, "_points"):
 		out["points"] = l._points
 	
-	if l._is_group: # hasattr(l, "_layers"):
+	if l._is_group:
 		out["layers"] = serialize_layers(l._layers)
 	
 	return out
 
 
 def save_layers_images(layers, data, image_getter):
-	if SKIP_IMAGES:
+	if util.ARGS.skip_images:
 		return
 	
 	for l in layers:
-		if not l._export_image:
-			continue
-		
-		image = image_getter(l)
-		save_layer_image(image, l, data)#,# texture_path, texture_format, texture_format_settings,)
+		if not l._ignore_layer and l._export_image and hasattr(l, "_texture"):
+			image = image_getter(l)
+			_save_layer_image(image, l, data)
 
-def save_layer_image(image, l, data):# path, image_format, image_format_settings, **kwargs):
-	global SKIP_IMAGES, COMPLAINED_ABOUT_WEBP
-	
-	if SKIP_IMAGES or not l._export_image:
-		return
+def _save_layer_image(image, l, data):
+	global COMPLAINED_ABOUT_WEBP
 	
 	settings = data["settings"]
 	
@@ -279,9 +360,8 @@ def save_layer_image(image, l, data):# path, image_format, image_format_settings
 		new_image.paste(image, mask=image.split()[3])
 		image = new_image
 	
-	path = Path(l._texture_path)
+	path = Path(l._texture_dir) / l._texture
 	file.make_dir(path.parent)
-	
 	image.save(path, texture_format, **texture_format_settings)
 	
 	print(f"saved: {path}")

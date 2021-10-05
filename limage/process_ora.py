@@ -29,22 +29,25 @@ BLEND_MODES:dict = {
 	"svg:dst-atop": "dst_atop",
 }
 
-def process(items:list):
-	for item in items:
-		process_file(item)
-
-def process_file(data:dict):
-	file = Project.load(data["path"])
+def process(path, data:dict):
+	def get_image(l):
+		img = l.get_image_data()
+		img = img.crop(l._bounds)
+		return img
+	
+	file = Project.load(path)
 	wide, high = file.dimensions
 	settings = shared.get_settings(data)
-	
-	padding = get(settings, "padding")
 	
 	# layers can be referenced in order
 	layers = [x for x in file.children_recursive]
 	
 	for l in layers:
-		l.name, l._tags, l._child_tags, l._descendant_tags = util.parse_name(l.name)
+		l._name = l.name
+		l._is_group = l.type == TYPE_GROUP
+		l._parent_layer = None if l.parent.parent == None else l.parent
+		
+		l._bounds = l.get_image_data().getbbox()
 		l._visible = l.visible
 		l._opacity = l.opacity
 		l._blend_mode = BLEND_MODES[l.composite_op]
@@ -52,54 +55,21 @@ def process_file(data:dict):
 		l.visible = True
 		l.opacity = 1.0
 		
-		l._is_group = l.type == TYPE_GROUP and not "merge" in l._tags
-		l._export_image = True
-		l._parent_layer = None if l.parent.parent == None else l.parent
-		
 		if l._is_group:
 			l._layers = [x for x in l.children]
-			l._deep_layers = [x for x in l.children_recursive]
-	
+			
 	shared.update_path(layers, data)
+	shared.update_child_tags(layers)
 	shared.determine_drawable(layers)
 	
-	for l in layers:
-		img = l.get_image_data()
-		l._bounds = img.getbbox()
-		
-		if l._export_image:
-			img = img.crop(l._bounds) 
-			shared.save_layer_image(img, l, data)
-	
-	shared.update_area(layers, wide, high, padding)
-	
-	main_origin = Vec2(wide, high) * Vec2(.5, .5)
+	shared.update_area(layers, wide, high, get(settings, "padding"))
+	main_origin = Vec2(wide, high) * Vec2(0, 0)
+	shared.update_origins(layers, main_origin)
 	main_origin = shared.localize_area(layers, main_origin)
 	
-	data["size"] = Vec2(wide, high),
+	shared.save_layers_images(layers, data, get_image)
+	
+	data["size"] = Vec2(wide, high)
 	data["root"] = {
-		"layers": shared.serialize_layers([l for l in file.children])
+		"layers": shared.serialize_layers([l for l in file.children if not l._ignore_layer])
 	}
-	
-	# util.print_json(data["root"]["layers"])
-
-	# print(dir(layer))
-	# print("")
-	# if l.type == TYPE_LAYER:
-		# print(dir(layer))
-		# print(layer.name, layer.opacity,  layer.composite_op, layer.visible, layer.hidden)
-	
-	# elif layer.type == TYPE_GROUP:
-		# print(layer.name)
-# 		for l in layer.children:
-# 			print("  ", l.name)
-
-# for layer in project.children:
-# 	if layer.type == TYPE_LAYER:
-# 		img = layer.get_image_data()
-# 		print(img.getbbox())
-		
-# 		img = img.crop(img.getbbox())
-		
-		
-# 		img.save(f"{layer.name}.png")

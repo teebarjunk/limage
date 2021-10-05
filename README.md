@@ -1,22 +1,22 @@
 
-## limage v0.1 - (UNSTABLE, VERY EARLY)
+# limage v0.2
 
-Decompile layered images (.psd, .ora) into cropped textures + a json data file.
+Decompile layered images (`.psd`, `.kra`, `.ora`) into cropped textures + a json data file.
 
-Works with Krita and Gimp and anything else that can export .psd and .ora.
+Works with Krita and Gimp and anything else that can export `.psd`, `.kra` or `.ora`.
 
 ## Setup
 
-**Not ready for use.**
-
-- pip install .
-- cd directory/with/files
-- limage
+```
+pip install .
+cd directory/with/files
+limage
+```
 
 ## Command Line Flags
 
-- --print # output print statements
-- --skip_images # don't generate new images
+- `--print` output print statements
+- `--skip_images` don't generate new images
 
 ## Features
 
@@ -27,37 +27,37 @@ Works with Krita and Gimp and anything else that can export .psd and .ora.
 
 ## Tags
 
-Add tags in layer names, between []: *layer_name [tag_1 tag2 tag-3]*
+Add tags in layer names, between `[]`: `layer_name [tag_1 tag2 tag-3]`
 
-Use () to set tags for all children. *layer_group \[tag1\] (tag2 tag3)*
+Use `()` to set tags for all children. `layer_group [tag1] (tag2 tag3)`
 
-Use (()) to set tags for all descendants. *buttons ((button))*
+Use `(())` to set tags for all descendants. `buttons ((button))`
 
-Tags can have values: *background [parallax=10]* which you can then get in Godot with *limage.get_layer("background").tags.get("parallax")*.
+Tags can have values: `background [id=first parallax=10 red=true]` which will be auto type converted: `"tags": {"id": "first", "parallax": 10, "red": true}`
 
-- **x**: Completely ignore layer. (Wont export image or layer info.)
-- **xtex**: Don't generate texture.
-- **xdat**: Don't generate layer data.
-- **!crop**: Disable auto cropping to smallest size.
-- **visible**: Will make layer visible, regardless of it's state in the psd.
-- **!visible**: ^
-- **point**: Won't generate an image, but will create an empty node in the scene. Useful for spawn points.
-- **origin**: Sets the origin of the parent group. If no parent, sets the global origin.
+- `x`: Completely ignore layer. (Wont export image or layer info.)
+- `xtex`: Don't generate texture.
+- `xdat`: Don't generate layer data.
+- `!crop`: Disable auto cropping to smallest size.
+- `visible`: Will make layer visible, regardless of it's state in the psd.
+- `!visible`: ^
+- `point`: Won't generate an image, but will create an empty node in the scene. Useful for spawn points.
+- `origin`: Sets the origin of the parent group. If no parent, sets the global origin.
 
-- **copy**: Use texture of another layer. (Useful for limbs, eyes, repeating objects...)
-- **dir**: For explicitly defining local directory to save layer to. (Ideally use between children tags "()".)
+- `copy`: Use texture of another layer. (Useful for limbs, eyes, repeating objects...)
+- `dir`: For explicitly defining local directory to save layer to. (Ideally use between children tags `()`.)
 
 ### Group Tags
 
-- **origins**: Children will be treated as points and used for layer origins, for easier rotations + scaling.
-- **merge**: "Flatten" children into one image.
+- `origins`: Children will be treated as points and used for layer origins, for easier rotations + scaling.
+- `merge`: "Flatten" children into one image.
 
 
 ## Config Structures
 
-Export settings can be tweaked by including a *.json* or *.yaml* file next to the psd, with an identical name.
+Export settings can be tweaked by including a `.json` or `.yaml` file next to the psd, with an identical name.
 
-So next to *layered_images/my_picture* **.psd** include *layered_images/my_picture* **.json** with your settings.
+So next to `layered_images/my_picture.psd` include `layered_images/my_picture.json` with your settings.
 
 ```python
 # default settings
@@ -122,7 +122,7 @@ JPEG:
 
 ## Exported JSON Structure
 
-Data will be exported next to the file as a hidden .json: *my_psd.psd* -> *.my_psd.json*.
+Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my_psd.json`.
 
 ```json
 {
@@ -185,3 +185,7 @@ On Ubuntu:
 ```
 sudo apt-get install -y libwebp-dev
 ```
+
+## Changes
+### 0.2
+- `.kra` support added.

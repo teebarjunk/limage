@@ -2,7 +2,7 @@ from setuptools import setup
 setup(
 	name='limage',
 	packages=['limage'],
-	version='0.3',
+	version='0.2',
 	description='Decompile layered images from Photoshop, Krita, Gimp...',
 	keywords=["PHOTOSHOP", "KRITA", "GIMP", "LAYERED IMAGES"],
 	
