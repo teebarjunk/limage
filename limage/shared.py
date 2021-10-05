@@ -10,7 +10,7 @@ from .classes import Vec2
 from .util import get, print, print_error, print_warning
 
 DEFAULT_SETTINGS:dict = {
-	"sep": "-",				# change to "/" to folderize
+	"seperator": "-",				# change to "/" to folderize
 	
 	# texture related
 	"scale": 1,						# rescale textures
@@ -51,7 +51,7 @@ def get_settings(data):
 	if not "format" in settings: settings["format"] = util.ARGS.format
 	if not "padding" in settings: settings["padding"] = util.ARGS.padding
 	if not "quantize" in settings: settings["quantize"] = util.ARGS.quant
-	if not "sep" in settings: settings["sep"] = util.ARGS.sep
+	if not "seperator" in settings: settings["seperator"] = util.ARGS.seperator
 	
 	return util.merge_unique(settings, DEFAULT_SETTINGS)
 
@@ -96,7 +96,7 @@ def update_path(layers, data):
 			# 	[x._name for x in l._deep_layers])
 	
 	settings = data["settings"]
-	texture_seperator = settings["sep"]
+	texture_seperator = settings["seperator"]
 	texture_format = settings["format"]
 	texture_extension = get(settings, "extension", texture_format.lower())
 	
@@ -189,7 +189,11 @@ def update_area(layers, max_wide:int, max_high:int, padding:int=1):
 		r += padding
 		b += padding
 		
-		x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
+		# clamp to image bounds?
+		if False:
+			x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
+		else:
+			x, y, r, b = x, y, r, b
 		
 		w = r - x
 		h = b - y

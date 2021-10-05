@@ -2,6 +2,7 @@ from inspect import stack
 from pathlib import Path
 import json, os, sys, argparse, logging
 
+EXTENSIONS:list = [".psd", ".kra", ".ora"]
 SETTINGS:dict = {}
 ARGS = None
 _warnings = 0
@@ -19,7 +20,7 @@ def init():
 	parser.add_argument("--padding", type=int, default=1, help="Extra padding around textures.")
 	parser.add_argument("--quant", type=bool, default=False, help="Quantize. Reduce file size at cost of color count.")
 	parser.add_argument("--origin", default="0.0,0.0", help="Origin. 0.5,0.5 is center.")
-	parser.add_argument("--sep", default="-", help="Image name seperator.")
+	parser.add_argument("--seperator", default="-", help="Image name seperator.")
 	
 	parser.add_argument("--print", action="store_true", help="Debug: Print output.")
 	parser.add_argument("--skip_images", action="store_true", help="Debug: Skip generating images.")
@@ -28,17 +29,23 @@ def init():
 	ARGS.path = Path(ARGS.path)
 	ARGS.output = ARGS.path.parent / ARGS.path.stem
 	
-	log_path = ARGS.output / f".{ARGS.path.stem}.log"
-	logging.basicConfig(filename=log_path, level=logging.DEBUG)
-	
 	if ARGS.path.is_dir():
-		print("must be file")
+		_print("must be file")
 		sys.exit()
 	
-	elif not ARGS.path.suffix in [".psd", ".ora"]:
-		print("must be .psd or .ora")
+	elif not ARGS.path.suffix in EXTENSIONS:
+		_print(f"only files of type {EXTENSIONS} allowed.")
 		sys.exit()
 	
+	elif not ARGS.path.exists():
+		_print(f"no file at {ARGS.path}")
+		sys.exit()
+	
+	else:
+		ARGS.output.mkdir(parents=False, exist_ok=True)
+		
+		log_path = ARGS.output / f".{ARGS.path.stem}.log"
+		logging.basicConfig(filename=log_path, level=logging.DEBUG)
 
 def _get_color_str(default, **kwargs):
 	return get(kwargs, "color", default)

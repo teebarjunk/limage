@@ -61,8 +61,8 @@ So next to `layered_images/my_picture.psd` include `layered_images/my_picture.js
 
 ```python
 # default settings
-"seperator": "-",				# change to "/" and images will be stored in subfolders instead.
-"directory": None,				# if set, saves textures here
+"seperator": "-",			# change to "/" and images will be stored in subfolders instead.
+"directory": None,		# if set, saves textures here
 "scale": 1,						# rescale textures
 
 # in range of 0.0 - 1.0. makes rotation + flipping easier.

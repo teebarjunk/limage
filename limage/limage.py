@@ -2,12 +2,11 @@ import sys, os, json
 import importlib
 from pathlib import Path
 from . import __info__, file, util
-from .util import get, print, print_warning, print_error
+from .util import get, print, print_warning, print_error, EXTENSIONS
 
 __version__ = __info__.__version__
 
 PROCESSORS:dict = {}
-EXTENSIONS:list = [".psd", ".kra", ".ora"]
 
 def get_settings(path) -> tuple:
 	for k in [".json", ".yaml"]:
