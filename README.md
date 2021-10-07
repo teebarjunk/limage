@@ -5,12 +5,14 @@ Turn `.psd` `.kra` or `.ora` into cropped textures + json.
 
 Works with Photoshop, Krita, Gimp, and anything else that can export `*.psd *.kra *.ora`
 
+Developed primarilly for [Godot](https://github.com/teebarjunk/godot-limage).
+
 # Setup
 
 ```
 pip install .
 cd directory/with/files
-limage
+limage myfile.kra
 ```
 
 # Command Line Flags
@@ -98,28 +100,6 @@ So next to `layered_images/my_picture.psd` include `layered_images/my_picture.js
 }
 ```
 
-```yaml
-# yaml version fwiw
-seperator: "-"
-directory: null
-scale": 1
-origin: [0, 0]
-format: PNG
-quantize: False
-
-PNG:
-  optimize: True
-
-WEBP:
-  lossless: True
-  method: 3
-  quality: 80
-
-JPEG:
-  optimize: True
-  quality: 80
-```
-
 # Exported JSON Structure
 
 Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my_psd.json`.
@@ -144,13 +124,13 @@ Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my
 					"tag2": 10
 				},
 				"visible": true, // Was layer visible?
-				"opacity": 1.0, // Layer alpha. 0.0-1.0 range.
+				"opacity": 1.0, // Layer alpha. Normalized to 0.0-1.0 range.
 				"blend_mode": "normal", // Blendmode normalized to snake case.
-				// Position localized to group.
+				// Position local to parent.
 				"position": {  "x": 0.0, "y": 0.0 },
-				// Origin (typically centered). Localized to group.
+				// Origin (typically center), local to parent.
 				"origin": {  "x": 0.0, "y": 0.0 },
-				// Area of texture in file. Global.
+				// Area in global file.
 				"area": { "x": 0, "y": 0, "w": 0, "h": 0 },
 				
 				// Only if they exist.
@@ -167,7 +147,10 @@ Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my
 				// Only for group layers.
 				"layers": []
 			}
-		]
+		],
+		// Only if they exist.
+		"points": [{
+		}]
 	}
 }
 ```
