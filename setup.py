@@ -2,7 +2,7 @@ from setuptools import setup
 setup(
 	name='limage',
 	packages=['limage'],
-	version='0.2',
+	version='0.3',
 	description='Decompile layered images from Photoshop, Krita, Gimp...',
 	keywords=["PHOTOSHOP", "KRITA", "GIMP", "LAYERED IMAGES"],
 	
@@ -17,6 +17,7 @@ setup(
 		'console_scripts': ['limage=limage.command_line:main'],
 	},
 	install_requires=[
+		"numpy",
 		"psd-tools",	# photoshop
 		"pyora"			# open raster
 	],

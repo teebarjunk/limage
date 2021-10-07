@@ -16,9 +16,10 @@ def init():
 	parser = argparse.ArgumentParser(description="Limage v1.0")
 	parser.add_argument("path", help="Path to file or directory.")
 	parser.add_argument("--format", type=str, default="PNG", help="Output texture format.")
+	parser.add_argument("--output", type=str, default="", help="Where to store files.")
 	parser.add_argument("--scale", type=float, default=0.0, help="Scale of textures.")
 	parser.add_argument("--padding", type=int, default=1, help="Extra padding around textures.")
-	parser.add_argument("--quant", type=bool, default=False, help="Quantize. Reduce file size at cost of color count.")
+	parser.add_argument("--quant", type=str, default="0,0,0", help="Quantize. Reduce file size at cost of color count.")
 	parser.add_argument("--origin", default="0.0,0.0", help="Origin. 0.5,0.5 is center.")
 	parser.add_argument("--seperator", default="-", help="Image name seperator.")
 	
@@ -27,7 +28,7 @@ def init():
 	ARGS = parser.parse_args()
 	
 	ARGS.path = Path(ARGS.path)
-	ARGS.output = ARGS.path.parent / ARGS.path.stem
+	ARGS.output = Path(ARGS.output) if ARGS.output else ARGS.path.parent / ARGS.path.stem
 	
 	if ARGS.path.is_dir():
 		_print("must be file")
@@ -188,84 +189,47 @@ def merge_unique(t:dict, p:dict) -> dict:
 			t[k] = p[k]
 	return t
 
-# def get_between(text:str, start:str, end:str) -> list:
-# 	out = []
-# 	while True:
-# 		a = text.find(start)
-# 		if a == -1: break
-# 		b = text.find(end, a + len(start))
-# 		if b == -1: break
-# 		out.append(text[a+len(start):b])
-# 		text = text[b+len(end)+1:]
-# 	return out
+# def tiny(f): return int(f) if int(f)==f else f
+# def tiny_vec2(d): return [tiny(d["x"]), tiny(d["y"])]
+# def tiny_vec4(d): return [tiny(d["x"]), tiny(d["y"]), tiny(d["w"]), tiny(d["h"])]
 
-def tiny(f): return int(f) if int(f)==f else f
-def tiny_vec2(d): return [tiny(d["x"]), tiny(d["y"])]
-def tiny_vec4(d): return [tiny(d["x"]), tiny(d["y"]), tiny(d["w"]), tiny(d["h"])]
+def sanitize(s:str):
+	out = ""
+	for c in s:
+		if c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -=_/[]()<>":
+			out += c
+	return out.strip()
 
 def get_between(name:str, tag1="[", tag2="]"):
-	s = name.find(tag1)
-	e = name.find(tag2, s+len(tag1))
-	data = {}
-	if s != -1 and e != -1:
-		inner = name[s+len(tag1):e]
-		# print(f"INNER: [{inner}]")
-		
-		# Replace spaces between quotes, for a second
-		while True:
-			qs = inner.find('"')
-			qe = inner.find('"', qs+1)
-			if qs != -1 and qe != -1:
-				q0 = inner[:qs]
-				q = inner[qs+1:qe]
-				qn = inner[qe+1:]
-				inner = q0 + q.replace(" ", "####") + qn
-			else:
-				break
-		
-		name = name.replace(f"{tag1}{inner}{tag2}", "")#name[:s].strip() + name[e+len(tag2):]
-		inner = inner.split(" ")
-		for key in inner:
-			if "=" in key:
-				key, val = key.split("=")
-				# Return spaces to quotes.
-				val = val.replace("####", " ").strip()
-				data[key] = str2var(val)
-			else:
-				data[key] = True
+	if tag1 in name:
+		name, inner = name.split(tag1, 1)
+		if tag2 in inner:
+			inner, _ = inner.split(tag2, 1)
+	else:
+		return name, {}
+	
+	data = {}	
+	for k in inner.split(" "):
+		if "=" in k:
+			k, v = k.split("=", 1)
+			data[k] = str2var(v)
+		else:
+			data[k] = True
+	
+	name = name.strip()
 	return name, data
 
 def parse_name(name:str) -> tuple:
+	name = sanitize(name)
 	name, descendants_data = get_between(name, "((", "))")
 	name, child_data = get_between(name, "(", ")")
 	name, data = get_between(name, "[", "]")
 	
-	# sanitize name
-	new_name = ""
-	for c in name:
-		if c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ":
-			new_name += c
-	new_name = new_name.strip()
-	
 	# make safe
 	if False:
-		new_name = new_name.lower().replace(" ", "_")
+		name = name.lower().replace(" ", "_")
 	
-	# print(new_name, data, child_data, descendants_data)
-	
-	# print(output, data, child_data, descendants_data)
-	return new_name, data, child_data, descendants_data
-
-def get_between_as_flags(text:str, start:str, end:str) -> dict:
-	out = {}
-	for tag in get_between(text, start, end):
-		for kv in tag.split(" "):
-			if "=" in kv:
-				k, v = kv.split("=")
-				out[k] = str2var(v)
-			else:
-				out[kv] = True
-	return out
+	return name, data, child_data, descendants_data
 
 def append_unique(t:list, p:list):
 	for item in p:

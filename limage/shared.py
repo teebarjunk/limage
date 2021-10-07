@@ -1,4 +1,5 @@
 import sys
+from math import ceil, floor
 from pathlib import Path
 
 import PIL
@@ -7,7 +8,7 @@ from PIL import features
 
 from . import util, file, classes
 from .classes import Vec2
-from .util import get, print, print_error, print_warning
+from .util import get, _print, print, print_error, print_warning
 
 DEFAULT_SETTINGS:dict = {
 	"seperator": "-",				# change to "/" to folderize
@@ -21,6 +22,8 @@ DEFAULT_SETTINGS:dict = {
 	# can really decrease file size, but at cost of color range.
 	# https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.quantize
 	"quantize": False,				# decrease size + decrease quality
+	"quantize_method": 3,
+	"quantize_colors": 255,
 	
 	# https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html
 	# https://docs.godotengine.org/en/stable/getting_started/workflow/assets/importing_images.html
@@ -50,8 +53,14 @@ def get_settings(data):
 	if not "output" in settings: settings["output"] = util.ARGS.output
 	if not "format" in settings: settings["format"] = util.ARGS.format
 	if not "padding" in settings: settings["padding"] = util.ARGS.padding
-	if not "quantize" in settings: settings["quantize"] = util.ARGS.quant
 	if not "seperator" in settings: settings["seperator"] = util.ARGS.seperator
+	if not "scale" in settings: settings["scale"] = util.ARGS.scale
+	
+	if not "quantize" in settings:
+		qenabled, qmethod, qcolors = util.ARGS.quant.split(",")
+		settings["quantize"] = True if qenabled=="1" else False
+		settings["quantize_method"] = int(qmethod)
+		settings["quantize_colors"] = int(qcolors)
 	
 	return util.merge_unique(settings, DEFAULT_SETTINGS)
 
@@ -78,22 +87,57 @@ def get_all_descendants(l, out):
 			get_all_descendants(c, out)
 	return out
 
-def update_path(layers, data):
-	# directory = Path(data["directory"]) / data["name"]
+def finalize(layers, root_layers, data, width, height, get_image):
+	settings = get_settings(data)
 	
+	update_path(layers, data)
+	update_child_tags(layers)
+	determine_drawable(layers)
+	
+	scale = get(settings, "scale")
+	padding = get(settings, "padding")
+	
+	new_width = int(floor(width * scale))
+	new_height = int(floor(height * scale))
+	
+	points = []
+	
+	update_area(layers, new_width, new_height, scale, padding)
+	main_origin = Vec2(new_width, new_height) * Vec2(0, 0)
+	inital_origin = main_origin
+	
+	main_origin = update_origins(points, layers, main_origin)
+	localize_area(layers, main_origin)
+	
+	save_layers_images(layers, data, get_image)
+	
+	data["size"] = Vec2(new_width, new_height)
+	data["original_size"] = Vec2(width, height)
+	data["root"] = { "layers": serialize_layers([l for l in root_layers if not l._ignore_layer]) }
+	
+	if len(points):
+		data["root"]["points"] = points
+		diff = inital_origin - main_origin
+		for x in points: x["position"] += diff
+
+def update_path(layers, data):
 	lindex = 0
 	for l in layers:
 		l._name, l._tags, l._layer_tags, l._deep_layer_tags = util.parse_name(l._name)
+		
+		# force a name for unnamed nodes
 		if l._name.strip() == "":
-			l._name = f"UNNAMED{lindex}"
+			if "options" in l._tags: l._name = "options"
+			elif "toggles" in l._tags: l._name = "toggles"
+			elif l._tags: l._name = iter(l._tags).__next__()
+			else: l._name = f"noname_{lindex}"
+		
+		# layer index
 		l._index = lindex
 		lindex += 1
 		
 		if hasattr(l, "_layers"):
 			l._deep_layers = get_all_descendants(l, [])
-			# print("===\n",
-			# 	[x._name for x in l._layers],
-			# 	[x._name for x in l._deep_layers])
 	
 	settings = data["settings"]
 	texture_seperator = settings["seperator"]
@@ -106,7 +150,9 @@ def update_path(layers, data):
 		file_name = texture_seperator.join(l._full_path) + f".{texture_extension}"
 		l._texture = file_name
 		l._texture_dir = util.ARGS.output
-		l._texture_scale = 1
+		l._texture_scale = get(settings, "scale")
+		
+		l._points = []
 
 def update_child_tags(layers):
 	# apply tags to children
@@ -146,33 +192,24 @@ def print_names(l):
 
 def determine_drawable(layers):
 	for l in layers:
-		l._ignore_layer = False
-		l._export_image = True
+		l._ignore_layer = False # will layer data be exported?
+		l._export_image = True # will layer image be exported?
 	
 	for l in layers:
 		if l._is_group:
 			l._export_image = False
 		
-		# don't export image.
-		for k in ["x", "copy", "origin", "point"]:
-			if k in l._tags:
-				l._ignore_layer = True
-				l._export_image = False
-		
 		# don't export children.
-		for k in ["merge", "origins"]:
+		for k in ["merge", "origins", "points"]:
 			if k in l._tags:
 				l._ignore_layer = True
 				l._export_image = False
-				# print("===\n", l._name)
-				# print_names(l._layers)
-				# print_names(l._deep_layers)
 				for d in l._deep_layers:
 					d._ignore_layer = True
 					d._export_image = False
 		
 		# ignore layers.
-		for k in ["x", "origin", "point"]:
+		for k in ["x", "copy", "origin", "point"]:
 			if k in l._tags:
 				l._ignore_layer = True
 				l._export_image = False
@@ -181,19 +218,29 @@ def determine_drawable(layers):
 						d._ignore_layer = True
 						d._export_image = False
 
-def update_area(layers, max_wide:int, max_high:int, padding:int=1):
+def update_area(layers, max_wide:int, max_high:int, scale:float=1.0, padding:int=1):
 	for l in layers:
 		x, y, r, b = l._bounds
+		
+		l._bbox = (x, y, r, b)
+		
+		x = x * scale
+		y = y * scale
+		r = r * scale
+		b = b * scale
+		
+		for x in l._points: l._points *= scale
+		
+		# clamp to image bounds?
+		if True: # TODO: Add toggle somewhere.
+			x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
+		else:
+			x, y, r, b = x, y, r, b
+		
 		x -= padding
 		y -= padding
 		r += padding
 		b += padding
-		
-		# clamp to image bounds?
-		if False:
-			x, y, r, b = max(x, 0), max(y, 0), min(r, max_wide), min(b, max_high)
-		else:
-			x, y, r, b = x, y, r, b
 		
 		w = r - x
 		h = b - y
@@ -202,16 +249,32 @@ def update_area(layers, max_wide:int, max_high:int, padding:int=1):
 		l._bounds_size = Vec2(w, h)
 		l._position = Vec2(x, y)
 		l._origin = Vec2(x, y) + l._bounds_size * .5
-		l._bbox = (x, y, r, b)
 
-def update_origins(layers, main_origin):
+def update_origins(global_points, layers, main_origin):
 	# update origins
 	for l in layers:
+		# add point to parent
 		if "point" in l._tags:
-			pass
+			del l._tags["point"]
+			point = { "name": l._name, "position": l._origin, "tags": l._tags }
+			if l._parent_layer == None:
+				global_points.append(point)
+			else:
+				l.parent._points.append(point)
 		
+		# add points to objects
+		if "points" in l._tags:
+			del l._tags["points"]
+			for c in l._layers:
+				target = get_layer_by_path(layers, c._name)
+				if target != None:
+					target._points.append({ "name": l._name, "position": c._origin, "tags": c._tags })
+				else:
+					_print("can't find layer " + c._name)
+		
+		# global origin
 		if "origin" in l._tags:
-			if not l._parent_layer:
+			if l._parent_layer == None:
 				main_origin = l._origin
 			else:
 				l.parent._origin = l._origin
@@ -223,16 +286,24 @@ def update_origins(layers, main_origin):
 	
 	return main_origin
 
-def localize_area(layers, psd_origin):
+def localize_area(layers, main_origin):
 	for l in layers:
-		# center on main origin
-		l._position -= psd_origin
-		l._origin -= psd_origin
+		l._initial_position = l._origin
 		
+		# force group to origin
+		if l._is_group:
+			l._position = main_origin
+			l._origin = main_origin
+		
+		# center on main origin
+		l._position -= main_origin
+		l._origin -= main_origin
+		
+		# TODO: Finish smart layers/clone layers
 		# 'copy' origin
-		if "copy" in l._tags:
-			dif = l._copy_from._origin - l._copy_from._position
-			l._origin = l._position + dif
+		# if "copy" in l._tags or l._is_clone:
+		# 	dif = l._copy_from._origin - l._copy_from._position
+		# 	l._origin = l._position + dif
 	
 	# localize points
 	for l in layers:
@@ -240,6 +311,7 @@ def localize_area(layers, psd_origin):
 		while p != None:
 			l._position -= p._position
 			l._origin -= p._position
+			
 			p = p._parent_layer
 	
 	# center
@@ -250,14 +322,16 @@ def localize_area(layers, psd_origin):
 		l._position += l._origin
 		l._origin += l._bounds_size * .5
 	
-	# def localize_to_parent(parent, child):
-	# 	if parent:
-	# 		child._out_position -= parent._out_origin
-	
 	# localize to parent
 	for l in layers:
 		if l._parent_layer:
 			l._position -= l._parent_layer._origin
+	
+	# move points
+	for l in layers:
+		diff = l._origin - l._initial_position
+		diff -= l._bounds_size * .5
+		for x in l._points: x["position"] += diff
 	
 	# on_descendants(None, output, localize_to_parent)
 
@@ -288,13 +362,15 @@ def serialize_layer(l) -> dict:
 		}
 	}
 	
+	if len(l._points):
+		out["points"] = l._points
+	
+	if hasattr(l, "shapes"):
+		out["shapes"] = l.shapes
+	
 	if hasattr(l, "_texture") and l._export_image:
 		out["texture"] = str(l._texture)
-		out["directory"] = str(l._texture_dir)
 		out["scale"] = l._texture_scale
-	
-	if hasattr(l, "_points"):
-		out["points"] = l._points
 	
 	if l._is_group:
 		out["layers"] = serialize_layers(l._layers)
@@ -309,7 +385,15 @@ def save_layers_images(layers, data, image_getter):
 	for l in layers:
 		if not l._ignore_layer and l._export_image and hasattr(l, "_texture"):
 			image = image_getter(l)
-			_save_layer_image(image, l, data)
+			if image != None:
+				_save_layer_image(image, l, data)
+			
+			# delete texture field so it won't be added to output struct
+			else:
+				del l._texture
+
+def m_eight(x):
+	return ((x + 7) & (-8))
 
 def _save_layer_image(image, l, data):
 	global COMPLAINED_ABOUT_WEBP
@@ -333,22 +417,32 @@ def _save_layer_image(image, l, data):
 	# image processing
 	tags = l._tags
 	is_mask = "mask" in tags
-	scale = get(tags, "scale", get(settings, "scale", 1))
+	scale = get(tags, "scale", get(settings, "scale"))
+	padding = get(settings, "padding")
 	
 	# Scale.
 	if scale != 1:
 		w, h = image.size
-		w = math.ceil(w * scale)
-		h = math.ceil(h * scale)
+		w = ceil(w * scale)
+		h = ceil(h * scale)
 		image = image.resize((w, h), Image.NEAREST if is_mask else Image.LANCZOS)
 	
-	# Optional: Quantize (Can really reduce size, but at cost of colors.)
-	# 0 = median cut 1 = maximum coverage 2 = fast octree
+	# Padding.
+	if padding != 0:
+		w, h = image.size
+		w += padding*2
+		h += padding*2
+		padded = Image.new(image.mode, (w,h), (0,0,0,0))
+		padded.paste(image, (padding, padding))
+		image = padded
+	
 	if is_mask:
 		image = image.quantize(colors=2, method=2, dither=Image.NONE)
 	
-	elif get(settings, "quantize", False):#self.get_settings("quantize"):
-		image = image.quantize(method=3)
+	# Optional: Quantize (Can really reduce size, but at cost of colors.)
+	# 0 = median cut 1 = maximum coverage 2 = fast octree
+	elif get(settings, "quantize", False):
+		image = image.quantize(method=settings["quantize_method"], colors=settings["quantize_colors"])
 	
 	# generate polygon
 	# TODO: move this somewhere else
@@ -360,9 +454,16 @@ def _save_layer_image(image, l, data):
 	
 	# RGBA -> RGB
 	if texture_format in ["JPEG"]:
-		new_image = Image.new("RGB", image.size, (255, 255, 255))
-		new_image.paste(image, mask=image.split()[3])
-		image = new_image
+		# new_image = Image.new("RGB", image.size, (255, 255, 255))
+		# new_image.paste(image, mask=image.split()[3])
+		image = image.convert("RGB")
+	
+	elif texture_format in ["BMP"]:
+		# TODO: Fix
+		_, _, _, a = image.convert("RGBA").split()
+		bg = Image.merge("RGB", (a, a, a))
+		w, h = image.size
+		image = bg.convert("1").resize((m_eight(w), m_eight(h)), Image.NEAREST)
 	
 	path = Path(l._texture_dir) / l._texture
 	file.make_dir(path.parent)

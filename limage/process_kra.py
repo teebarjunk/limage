@@ -6,6 +6,52 @@ from . import util, shared, classes
 from .util import get, print, _print, print_error, print_warning
 from .classes import Vec2
 
+def process(path, data:dict):
+	file = KRARoot(path)
+	wide, high = file.width, file.height
+	layers = file.layers_recursive()
+	root_layers = [l for l in file.layers]
+	
+	for l in layers:
+		l._name = l.name
+		l._is_group = l.nodetype == "grouplayer"
+		l._is_clone = l.nodetype == "clonelayer"
+		l._parent_layer = None if l.parent == None else l.parent
+		
+		l._bounds = l.get_bounds()
+		l._visible = l.visible
+		l._opacity = l.opacity
+		l._blend_mode = l.blend_mode
+		
+		l.visible = True
+		l.opacity = 1.0
+		
+		if l._is_group:
+			l._layers = [x for x in l.layers]
+	
+	def get_image(l):
+		return l.get_image_data()
+	
+	shared.finalize(layers, root_layers, data, wide, high, get_image)
+	
+	# shared.update_path(layers, data)
+	# shared.update_child_tags(layers)
+	# shared.determine_drawable(layers)
+	
+	# # get initial rect
+	# shared.update_area(layers, wide, high, get(settings, "padding"))
+	# main_origin = Vec2(wide, high) * Vec2(0, 0)
+	# main_origin = shared.update_origins(layers, main_origin)
+	# main_origin = shared.localize_area(layers, main_origin)
+	
+	# shared.save_layers_images(layers, data, lambda l: l.get_image_data())
+	
+	# # output
+	# data["size"] = Vec2(wide, high)
+	# data["root"] = {
+	# 	"layers": shared.serialize_layers([l for l in root_layers if not l._ignore_layer])
+	# }
+
 class KRABase:
 	def __init__(self):
 		self.layers = []
@@ -32,6 +78,7 @@ class KRARoot(KRABase):
 			
 			layers = IMAGE.find("{http://www.calligra.org/DTD/krita}layers")
 			self.layers = [KRALayer(x, self, None) for x in layers]
+			self.layers.reverse()
 
 class KRALayer(KRABase):
 	def __init__(self, data, root, parent):
@@ -50,30 +97,101 @@ class KRALayer(KRABase):
 		self.bbox = (self.x,self.y,self.x+1,self.y+1)
 		self.imagedata = None
 		
-		if data.attrib and data.attrib["nodetype"] == "grouplayer":
+		self.uuid = data.attrib["uuid"]
+		
+		print(self.name, self.parent)
+		
+		# group
+		if self.nodetype == "grouplayer":
 			for layer in data:
 				self.layers = [KRALayer(x, root, self) for x in layer]
+				self.layers.reverse()
+		
+		# clone TODO
+		elif self.nodetype == "clonelayer":
+			self.clonefrom = data.attrib["clonefromuuid"]
+		
+		# shape TODO
+		elif self.nodetype == "shapelayer":
+			self._collect_shapes()
+		
 	
+	def _collect_shapes(self):
+		self.shapes = []
+		
+		with zipfile.ZipFile(self.root.filepath, "r") as kra_file:
+			path = f"{self.root.name}/layers/{self.filename}.shapelayer/content.svg"
+			if not path in kra_file.namelist():
+				return
+			
+			file = kra_file.open(path)
+			root = ET.parse(file).getroot()
+			
+			for p in root:
+				tag = p.tag[len("{http://www.w3.org/2000/svg}"):]#, p.attrib.keys())
+				
+				if tag == "path":
+					x, y = p.attrib["transform"][len("translate("):-1].split(",")
+					points = p.attrib["d"][1:-1].split(" ")
+					self.shapes.append({
+						"type": "path",
+						"x": float(x),
+						"y": float(y),
+						"color": p.attrib["fill"],
+						"points": points
+						})
+				
+				elif tag == "ellipse":
+					x, y = p.attrib["transform"][len("translate("):-1].split(",")
+					rx, ry = p.attrib["rx"], p.attrib["rx"]
+					self.shapes.append({
+						"type": "ellipse",
+						"x": float(x),
+						"y": float(y),
+						"rx": float(rx),
+						"ry": float(ry),
+						"color": p.attrib["fill"],
+					})
+				
+				elif tag == "text":
+					x, y = p.attrib["transform"][len("translate("):-1].split(",")
+					text = p.text
+					for pp in p:
+						text = pp.text
+					
+					self.shapes.append({
+						"type": "text",
+						"x": float(x),
+						"y": float(y),
+						"text": text
+						})
+				
 	def get_bounds(self):
 		image = self.get_image_data()
-		if not image:
+		if image == None:
 			return (0, 0, 1, 1)
+		
 		minx = self.x + self.tile_min_x
 		miny = self.y + self.tile_min_y
 		
 		bounds =  (minx, miny, minx+self.width, miny+self.height)
-		_print(bounds)
 		return bounds
 		
 	def get_image_data(self):
-		if self.nodetype == "grouplayer":
+		if self.nodetype != "paintlayer":
 			return None
 		
 		if self.imagedata:
 			return self.imagedata
 		
 		with zipfile.ZipFile(self.root.filepath, "r") as kra_file:
-			f = kra_file.read(f"{self.root.name}/layers/" + self.filename)
+			path = f"{self.root.name}/layers/{self.filename}"
+			
+			# file doesn't exist
+			if not path in kra_file.namelist():
+				return None
+			
+			f = kra_file.read(path)
 			f = io.BytesIO(f)
 			
 			version = int(f.readline().decode("ascii").strip().split(" ")[1])
@@ -140,12 +258,14 @@ class KRALayer(KRABase):
 			
 			image = Image.fromarray(clrs, "RGBA")
 			bbox = image.getbbox()
+			
 			self.imagedata = image.crop(bbox)
-			self.tile_min_x = minx
-			self.tile_min_y = miny
+			self.tile_min_x = minx + bbox[0]
+			self.tile_min_y = miny + bbox[1]
 			self.width = bbox[2]-bbox[0]
 			self.height = bbox[3]-bbox[1]
 			return self.imagedata
+
 
 # https://programtalk.com/python-examples/lzf.decompress/
 # https://github.com/2shady4u/godot-kra-psd-importer/blob/525f433605545a964419934185a98fe865195f11/docs/KRA_FORMAT.md
@@ -179,43 +299,3 @@ def lzf_decompress(indata, outdata):
 				ref += 1
 
 
-def process(path, data:dict):
-	file = KRARoot(path)
-	wide, high = file.width, file.height
-	settings = shared.get_settings(data)
-	
-	# layers can be referenced in order
-	layers = file.layers_recursive()
-	
-	for l in layers:
-		l._name = l.name
-		l._is_group = l.nodetype == "grouplayer"
-		l._parent_layer = None if l.parent == None else l.parent
-		
-		l._bounds = l.get_bounds()
-		
-		l._visible = l.visible
-		l._opacity = l.opacity
-		l._blend_mode = l.blend_mode
-		
-		l.visible = True
-		l.opacity = 1.0
-		
-		if l._is_group:
-			l._layers = [x for x in l.layers]
-	
-	shared.update_path(layers, data)
-	shared.update_child_tags(layers)
-	shared.determine_drawable(layers)
-	
-	shared.update_area(layers, wide, high, get(settings, "padding"))
-	main_origin = Vec2(wide, high) * Vec2(0, 0)
-	shared.update_origins(layers, main_origin)
-	main_origin = shared.localize_area(layers, main_origin)
-	
-	shared.save_layers_images(layers, data, lambda l: l.get_image_data())
-	
-	data["size"] = Vec2(wide, high)
-	data["root"] = {
-		"layers": shared.serialize_layers([l for l in file.layers if not l._ignore_layer])
-	}

@@ -1,27 +1,22 @@
 from psd_tools import PSDImage
 from psd_tools.constants import Tag
-# from psd_tools.constants import BlendMode
-import json, sys
-from pathlib import Path
+
 
 from . import util, file, classes, shared
 from .util import get, print, print_error, print_warning
 from .classes import Vec2
 
-__version__ = "0.3"
-
-def process(path, item:dict):
-	settings = shared.get_settings(data)
-	
+def process(path, data:dict):
 	psd = PSDImage.open(path)
 	wide, high = psd.size
 	layers = list(psd.descendants())
+	root_layers = [l for l in psd]
 	
-	# get name and tag data
 	for l in layers:
 		l._name = l.name
 		l._is_group = l.kind == "group"
-		l._parent_layer = None if l.parent == self.psd else l.parent
+		l._is_clone = l.kind == "smartobject"
+		l._parent_layer = None if l.parent == psd else l.parent
 		
 		l._bounds = l.bbox
 		l._visible = l.visible
@@ -34,21 +29,25 @@ def process(path, item:dict):
 		if l._is_group:
 			l._layers = [x for x in l]
 	
-	shared.update_path(layers, data)
-	shared.update_child_tags(layers)
+	def get_image(l):
+		return l.composite(l.bbox)
 	
-	# get initial rect
-	shared.update_area(layers, wide, high, get(settings, "padding"))
-	shared.update_origins(layers)
+	shared.finalize(layers, root_layers, data, wide, high, get_image)
 	
-	# psd origin
-	main_origin = Vec2(wide, high) * Vec2(get(settings, "origin"))
-	main_origin = shared.localize_area(layers, main_origin)
+	# shared.update_path(layers, data)
+	# shared.update_child_tags(layers)
+	# shared.determine_drawable(layers)
 	
-	shared.save_layers_images(layers, item, lambda l: l.composite(l._bbox))
+	# # get initial rect
+	# shared.update_area(layers, wide, high, get(settings, "padding"))
+	# main_origin = Vec2(wide, high) * Vec2(0, 0)
+	# main_origin = shared.update_origins(layers, main_origin)
+	# main_origin = shared.localize_area(layers, main_origin)
 	
-	# output
-	item["size"] = Vec2(wide, high)
-	item["root"] = {
-		"layers": shared.serialize_layers([l for l in psd if not l._ignore_layer])
-	}
+	# shared.save_layers_images(layers, data, lambda l: l.composite(l._bbox))
+	
+	# # output
+	# data["size"] = Vec2(wide, high)
+	# data["root"] = {
+	# 	"layers": shared.serialize_layers([l for l in root_layers if not l._ignore_layer])
+	# }

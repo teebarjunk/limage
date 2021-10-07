@@ -1,11 +1,11 @@
 
-# limage v0.2
+# limage v0.3
 
-Decompile layered images (`.psd`, `.kra`, `.ora`) into cropped textures + json.
+Turn `.psd` `.kra` or `.ora` into cropped textures + json.
 
-Works with Krita and Gimp and anything else that can export `.psd`, `.kra` or `.ora`.
+Works with Photoshop, Krita, Gimp, and anything else that can export `*.psd *.kra *.ora`
 
-## Setup
+# Setup
 
 ```
 pip install .
@@ -13,19 +13,19 @@ cd directory/with/files
 limage
 ```
 
-## Command Line Flags
+# Command Line Flags
 
 - `--print` output print statements
 - `--skip_images` don't generate new images
 
-## Features
+# Features
 
 - Many [image formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html), like WEBP.
 - Scale, [quantize](https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.quantize), and [optimize](#Settings) images.
 - Optionally merge groups at build time, so they can stay seperate in your file.
 - Only builds if there were changes.
 
-## Tags
+# Tags
 
 Add tags in layer names, between `[]`: `layer_name [tag_1 tag2 tag-3]`
 
@@ -47,13 +47,13 @@ Tags can have values: `background [id=first parallax=10 red=true]` which will be
 - `copy`: Use texture of another layer. (Useful for limbs, eyes, repeating objects...)
 - `dir`: For explicitly defining local directory to save layer to. (Ideally use between children tags `()`.)
 
-### Group Tags
+## Group Tags
 
 - `origins`: Children will be treated as points and used for layer origins, for easier rotations + scaling.
 - `merge`: "Flatten" children into one image.
 
 
-## Config Structures
+# Config Structures
 
 Export settings can be tweaked by including a `.json` or `.yaml` file next to the psd, with an identical name.
 
@@ -66,7 +66,7 @@ So next to `layered_images/my_picture.psd` include `layered_images/my_picture.js
 "scale": 1,						# rescale textures
 
 # in range of 0.0 - 1.0. makes rotation + flipping easier.
-# creating a layer with an "origin" tag will replace this. 
+# creating a layer with an "origin" tag will replace this.
 "origin": [0, 0],
 
 # you can choose any image format pillow + Godot support.
@@ -120,7 +120,7 @@ JPEG:
   quality: 80
 ```
 
-## Exported JSON Structure
+# Exported JSON Structure
 
 Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my_psd.json`.
 
@@ -129,43 +129,41 @@ Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my
 	"name": "my_psd", // Name of file, minus extension.
 	"type": ".psd", // Extension.
 	"directory": "", // The main directory files are in.
-	
-	"size": { // Size of file.
-		"x": 0,
-		"y": 0
-	},
+
+ 	// Size of file.
+	"size": { "x": 0, "y": 0 },
+	"original_size": { "x": 0, "y": 0 },
 	"root": {	// Container for main layers.
 		"layers": [
 			{
-				"name": "my_layer", // 
+				"name": "my_layer", //
 				"path": [], // List of parent group layers.
 				"full_path": [], // 'path' + 'name'
 				"tags": { // Optional tags included in file name. See Tags section.
 					"tag1": true,
 					"tag2": 10
-				}, 
+				},
 				"visible": true, // Was layer visible?
 				"opacity": 1.0, // Layer alpha. 0.0-1.0 range.
 				"blend_mode": "normal", // Blendmode normalized to snake case.
-				"position": { // Position localized to group.
-					"x": 0.0,
-					"y": 0.0
-				},
-				"origin": { // Origin (typically centered). Localized to group.
-					"x": 0.0,
-					"y": 0.0
-				},
-				"area": { // Area of texture in file. Not localized to group. 
-					"x": 0,
-					"y": 0,
-					"w": 0,
-					"h": 0
-				},
+				// Position localized to group.
+				"position": {  "x": 0.0, "y": 0.0 },
+				// Origin (typically centered). Localized to group.
+				"origin": {  "x": 0.0, "y": 0.0 },
+				// Area of texture in file. Global.
+				"area": { "x": 0, "y": 0, "w": 0, "h": 0 },
 				
+				// Only if they exist.
+				"points": [{
+					"name": "",
+					"position": { "x": 0, "y": 0 },
+					"tags": { }
+				}],
+
 				// Only for texture layers.
 				"texture": "", // Local path where texture was saved. Add to "directory" to get full path.
 				"scale": 1.0, // Scale texture was saved with.
-				
+
 				// Only for group layers.
 				"layers": []
 			}
@@ -174,7 +172,7 @@ Data will be exported next to the file as a hidden `.json`: `my_psd.psd` -> `.my
 }
 ```
 
-## Solutions
+# Solutions
 
 ### WEBP
 
@@ -186,6 +184,9 @@ On Ubuntu:
 sudo apt-get install -y libwebp-dev
 ```
 
-## Changes
-### 0.2
+# Changes
+# 0.3
+- Fixes and tweaks.
+
+# 0.2
 - `.kra` support added.
