@@ -5,15 +5,15 @@ Turn `.psd` `.kra` or `.ora` into cropped textures + json.
 
 Works with Photoshop, Krita, Gimp, and anything else that can export `*.psd *.kra *.ora`
 
-Developed primarilly for [Godot](https://github.com/teebarjunk/godot-limage).
 
 # Setup
 
-```
-pip install .
-cd directory/with/files
-limage myfile.kra
-```
+Developed primarilly for [Godot](https://github.com/teebarjunk/godot-limage).
+
+But if you want to use it seperately:
+- Unzip somewhere.
+- Open directory in console and type `pip install .`
+- Find `psd/kra/ora` file, and call `limage myfile.kra`
 
 # Command Line Flags
 
